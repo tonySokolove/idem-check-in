@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: idem-check-in
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/idem}
+    username: ${DB_USERNAME:idem_checkin}
+    password: ${DB_PASSWORD:}
+    hikari:
+      schema: checkin
+      maximum-pool-size: 5
+  flyway:
+    schemas: checkin
+    default-schema: checkin
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  # За Traefik: корректные схема и адрес клиента из X-Forwarded-*
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      base-path: /
+      exposure:
+        include: health
+
+checkin:
+  # ВРЕМЕННО: одно тестовое мероприятие для всех стоек, пока нет Device Service
+  event-id: ${CHECKIN_EVENT_ID:}
+  card-base-url: ${CARD_BASE_URL:https://idem-check-in.thelid.ru/c/}
+  provisioning-job-ttl: ${PROVISIONING_JOB_TTL:PT2M}
+  station-agent:
+    api-keys: ${STATION_AGENT_API_KEYS:}
+    session-ttl: ${STATION_SESSION_TTL:PT5M}
+    heartbeat-interval: ${STATION_HEARTBEAT_INTERVAL:PT60S}
+  registration:
+    base-url: ${REGISTRATION_URL:http://idem-registration}
+    token: ${REGISTRATION_API_TOKEN:}
