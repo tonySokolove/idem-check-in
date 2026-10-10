@@ -30,6 +30,7 @@ public class RegistrationSync {
         try {
             registrations.markCheckedIn(job.registrationId(), job.completedAt());
             repository.markRegistrationSynced(job.id());
+            log.info("Registration {} marked as checked in (job {})", job.registrationId(), job.id());
         } catch (RuntimeException error) {
             log.warn("Check-in mark for job {} postponed: {}", job.id(), error.getMessage());
         }
@@ -37,6 +38,10 @@ public class RegistrationSync {
 
     @Scheduled(fixedDelayString = "${checkin.registration-sync-interval:PT30S}")
     void retryPending() {
-        repository.findUnsynced(50).forEach(this::trySync);
+        var pending = repository.findUnsynced(50);
+        if (!pending.isEmpty()) {
+            log.info("Retrying check-in mark in Registration for {} job(s)", pending.size());
+        }
+        pending.forEach(this::trySync);
     }
 }

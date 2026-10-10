@@ -22,6 +22,12 @@ class ApiErrorHandler {
 
     @ExceptionHandler(ApiException.class)
     ResponseEntity<Map<String, Object>> api(ApiException error) {
+        HttpStatus status = error.status();
+        if (status.is5xxServerError() || status == HttpStatus.UNAUTHORIZED || status == HttpStatus.FORBIDDEN) {
+            log.warn("Request rejected: {} {} - {}", status.value(), error.code(), error.getMessage());
+        } else {
+            log.debug("Request rejected: {} {} - {}", status.value(), error.code(), error.getMessage());
+        }
         return body(error.status(), error.code(), error.getMessage(), error.details());
     }
 
@@ -33,6 +39,7 @@ class ApiErrorHandler {
                         .map(field -> field.getField() + ": " + field.getDefaultMessage())
                         .sorted().reduce((a, b) -> a + "; " + b).orElse("Invalid request")
                 : "Invalid request";
+        log.debug("Bad request ({}): {}", error.getClass().getSimpleName(), message);
         return body(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", message, null);
     }
 
@@ -40,6 +47,7 @@ class ApiErrorHandler {
     ResponseEntity<Map<String, Object>> unexpected(Exception error) {
         if (error instanceof ErrorResponse known) {
             HttpStatus status = HttpStatus.valueOf(known.getStatusCode().value());
+            log.debug("Request rejected by Spring MVC: {} ({})", status.value(), error.getClass().getSimpleName());
             return body(status, status.name(), status.getReasonPhrase(), null);
         }
         log.error("Unexpected error: {}", error.getClass().getName(), error);

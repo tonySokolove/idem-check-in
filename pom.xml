@@ -12,7 +12,7 @@
 
     <groupId>com.idem</groupId>
     <artifactId>idem-check-in</artifactId>
-    <version>0.1.0</version>
+    <version>0.3.0</version>
     <name>idem-check-in</name>
     <description>IDEM Check-in Service: ticket check at the entrance and NFC badge provisioning</description>
 
@@ -36,6 +36,21 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- Логирование: Log4j2 вместо Logback (конфиг — src/main/resources/log4j2-spring.xml) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-log4j2</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
@@ -89,6 +104,14 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <!-- META-INF/build-info.properties: версия сервиса в стартовом логе -->
+                    <execution>
+                        <goals>
+                            <goal>build-info</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>com.google.cloud.tools</groupId>

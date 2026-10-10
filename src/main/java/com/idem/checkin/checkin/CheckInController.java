@@ -1,5 +1,6 @@
 package com.idem.checkin.checkin;
 
+import com.idem.checkin.session.StationSession;
 import com.idem.checkin.session.StationSessionService;
 import jakarta.validation.Valid;
 import org.slf4j.MDC;
@@ -9,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Check-in на входе. Authorization: Bearer &lt;sessionToken&gt; активной Station Session. */
+/** Check-in на входе. Authorization: Bearer ;sessionToken; активной Station Session. */
 @RestController
 class CheckInController {
 
@@ -24,7 +25,7 @@ class CheckInController {
     @PostMapping("/api/v1/check-ins")
     CheckInDtos.CheckInResponse checkIn(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
                                         @Valid @RequestBody CheckInDtos.CheckInRequest request) {
-        var session = sessions.authenticateActive(authorization);
+        StationSession session = sessions.authenticateActive(authorization);
         String correlationId = request.correlationId() != null ? request.correlationId() : MDC.get(CorrelationIdFilter.MDC_KEY);
         return service.checkIn(session, request.externalRegistrationId().strip(), correlationId);
     }

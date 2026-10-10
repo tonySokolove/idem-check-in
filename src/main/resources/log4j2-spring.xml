@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Логи Check-in Service: всё пишется в консоль (stdout), в Kubernetes их читает kubectl logs.
+  Уровни — в application.yaml (logging.level.*), меняются переменными окружения без пересборки:
+    LOG_LEVEL_ROOT — библиотеки и Spring (по умолчанию INFO),
+    LOG_LEVEL_APP  — код com.idem (по умолчанию DEBUG).
+  В строке лога: время UTC, уровень, поток, логгер, [correlationId], затем session / job, если известны.
+  Не логировать: токены и ключи, персональные данные гостей, референс из QR (только ref#отпечаток), payload бейджа.
+-->
+<Configuration status="WARN">
+    <Properties>
+        <Property name="PATTERN">%d{yyyy-MM-dd'T'HH:mm:ss.SSS'Z'}{UTC} %-5level [%t] %logger{1.} [%X{correlationId}]%varsNotEmpty{ session=%X{sessionId}}%varsNotEmpty{ job=%X{jobId}} - %msg%n%xEx</Property>
+    </Properties>
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT" follow="true">
+            <PatternLayout pattern="${PATTERN}" charset="UTF-8"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Logger name="com.idem" level="DEBUG"/>
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>

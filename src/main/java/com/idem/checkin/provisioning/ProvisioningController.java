@@ -1,7 +1,9 @@
 package com.idem.checkin.provisioning;
 
+import com.idem.checkin.logging.Mdc;
 import com.idem.checkin.session.StationSessionService;
 import jakarta.validation.Valid;
+import org.slf4j.MDC;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * Статусы записи NFC от Station Agent. Authorization: Bearer &lt;sessionToken&gt; той сессии, в которой выдан job
+ * Статусы записи NFC от Station Agent. Authorization: Bearer ;sessionToken; той сессии, в которой выдан job
  * (даже если она уже закрыта — чтобы Agent мог дослать результат после перезапуска).
  */
 @RestController
@@ -38,6 +40,7 @@ class ProvisioningController {
     ProvisioningDtos.JobView report(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
                                     @PathVariable UUID jobId,
                                     @Valid @RequestBody ProvisioningDtos.StatusReport report) {
+        MDC.put(Mdc.JOB_ID, jobId.toString());
         var view = provisioning.report(sessions.authenticate(authorization), jobId, report);
         if (view.status() == JobStatus.COMPLETED) {
             repository.find(jobId).ifPresent(sync::trySync);
@@ -48,6 +51,7 @@ class ProvisioningController {
     @GetMapping("/{jobId}")
     ProvisioningDtos.JobView get(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
                                  @PathVariable UUID jobId) {
+        MDC.put(Mdc.JOB_ID, jobId.toString());
         return provisioning.get(sessions.authenticate(authorization), jobId);
     }
 }

@@ -21,6 +21,15 @@ Check-in Service IDEM: проверка билета на входе, Station Se
 | `STATION_SESSION_TTL`, `STATION_HEARTBEAT_INTERVAL` | жизнь сессии без heartbeat / интервал heartbeat | `PT5M` / `PT60S` |
 | `PROVISIONING_JOB_TTL` | сколько у Admin Hub времени, чтобы начать запись | `PT2M` |
 | `REGISTRATION_URL`, `REGISTRATION_API_TOKEN` | Registration Service | `http://idem-registration` |
+| `LOG_LEVEL_APP` | уровень логов кода `com.idem` | `DEBUG` |
+| `LOG_LEVEL_ROOT` | уровень логов Spring и библиотек | `INFO` |
+
+## Логи
+
+Log4j2, всё в консоль (stdout): `kubectl logs deploy/idem-check-in -n idem`. Конфиг — `src/main/resources/log4j2-spring.xml`.
+Строка: время UTC, уровень, поток, логгер, `[correlationId]`, `session=` / `job=`, если известны.
+`X-Correlation-Id` передаётся в Registration Service — один запрос гостя ищется по одному id в логах обоих сервисов.
+Референс из QR в лог не пишется, только отпечаток `ref#…` (12 hex SHA-256); токены, payload бейджа и имена гостей — тоже нет.
 
 ## Первый запуск в кластере
 

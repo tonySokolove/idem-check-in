@@ -21,6 +21,11 @@ server:
   # За Traefik: корректные схема и адрес клиента из X-Forwarded-*
   forward-headers-strategy: framework
 
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.idem: ${LOG_LEVEL_APP:DEBUG}
+
 management:
   endpoints:
     web:

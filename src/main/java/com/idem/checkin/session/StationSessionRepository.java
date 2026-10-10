@@ -26,8 +26,8 @@ public class StationSessionRepository {
     }
 
     /** Закрывает прежнюю активную сессию этого Admin Hub (новый ноутбук или перезапуск Agent). */
-    public void closeActiveForHub(String deviceId, Instant now) {
-        jdbc.sql("""
+    public int closeActiveForHub(String deviceId, Instant now) {
+        return jdbc.sql("""
                         UPDATE station_session
                         SET status = 'CLOSED', closed_at = :now,
                             close_reason = CASE WHEN expires_at <= :now THEN 'EXPIRED' ELSE 'REPLACED' END
@@ -71,8 +71,8 @@ public class StationSessionRepository {
                 .update();
     }
 
-    public void close(UUID id, String reason, Instant now) {
-        jdbc.sql("""
+    public int close(UUID id, String reason, Instant now) {
+        return jdbc.sql("""
                         UPDATE station_session SET status = 'CLOSED', close_reason = :reason, closed_at = :now
                         WHERE id = :id AND status = 'ACTIVE'
                         """)

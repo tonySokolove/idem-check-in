@@ -25,7 +25,7 @@ class StationSessionController {
         this.service = service;
     }
 
-    /** Authorization: Bearer &lt;Station Agent API key&gt;. */
+    /** Authorization: Bearer ;Station Agent API key;. */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     SessionDtos.OpenSessionResponse open(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
@@ -33,14 +33,14 @@ class StationSessionController {
         return service.open(authorization, request);
     }
 
-    /** Authorization: Bearer &lt;sessionToken&gt;. Продлевает сессию. */
+    /** Authorization: Bearer ;sessionToken;. Продлевает сессию. */
     @PostMapping("/{sessionId}/heartbeat")
     SessionDtos.SessionStateResponse heartbeat(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
                                                @PathVariable UUID sessionId) {
         return service.heartbeat(service.requireOwn(service.authenticate(authorization), sessionId));
     }
 
-    /** Authorization: Bearer &lt;sessionToken&gt;. Закрывает сессию (Agent завершает работу или сменился Hub). */
+    /** Authorization: Bearer ;sessionToken;. Закрывает сессию (Agent завершает работу или сменился Hub). */
     @DeleteMapping("/{sessionId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void close(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,

@@ -1,6 +1,10 @@
 package com.idem.checkin.registration;
 
 import com.idem.checkin.CheckInProperties;
+import com.idem.checkin.logging.Mdc;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -10,6 +14,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.io.IOException;
 import java.net.http.HttpClient;
 import java.time.Instant;
 import java.util.Map;
@@ -18,6 +23,8 @@ import java.util.UUID;
 
 @Component
 class HttpRegistrationClient implements RegistrationClient {
+
+    private static final Logger log = LoggerFactory.getLogger(HttpRegistrationClient.class);
 
     private final RestClient http;
 
@@ -31,6 +38,30 @@ class HttpRegistrationClient implements RegistrationClient {
                 .baseUrl(settings.baseUrl().toString())
                 .requestFactory(factory)
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + settings.token())
+                .requestInterceptor((request, body, execution) -> {
+                    // Сквозной correlationId: по нему запрос находится и в логах Registration Service
+                    String correlationId = MDC.get(Mdc.CORRELATION_ID);
+                    if (correlationId != null) {
+                        request.getHeaders().set(Mdc.CORRELATION_HEADER, correlationId);
+                    }
+                    long started = System.nanoTime();
+                    // Только путь: в query лежит референс гостя
+                    String call = request.getMethod() + " " + request.getURI().getPath();
+                    try {
+                        var response = execution.execute(request, body);
+                        long millis = (System.nanoTime() - started) / 1_000_000;
+                        if (response.getStatusCode().is5xxServerError()) {
+                            log.warn("Registration API {} -> {} ({} ms)", call, response.getStatusCode().value(), millis);
+                        } else {
+                            log.debug("Registration API {} -> {} ({} ms)", call, response.getStatusCode().value(), millis);
+                        }
+                        return response;
+                    } catch (IOException error) {
+                        log.warn("Registration API {} failed after {} ms: {}", call,
+                                (System.nanoTime() - started) / 1_000_000, error.toString());
+                        throw error;
+                    }
+                })
                 .build();
     }
 

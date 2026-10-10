@@ -41,8 +41,8 @@ public class ProvisioningRepository {
      * Переводит в TIMED_OUT задания, которые не начали запись вовремя или зависли,
      * и освобождает их PENDING-бейджи.
      */
-    public void expireStale(UUID registrationId, UUID sessionId, Instant now) {
-        jdbc.sql("""
+    public int expireStale(UUID registrationId, UUID sessionId, Instant now) {
+        return jdbc.sql("""
                         WITH expired AS (
                             UPDATE provisioning_job
                             SET status = 'TIMED_OUT', error_code = 'TIMED_OUT', updated_at = :now
@@ -60,8 +60,8 @@ public class ProvisioningRepository {
                 .update();
     }
 
-    public void expireJob(UUID jobId, Instant now) {
-        jdbc.sql("""
+    public int expireJob(UUID jobId, Instant now) {
+        return jdbc.sql("""
                         WITH expired AS (
                             UPDATE provisioning_job
                             SET status = 'TIMED_OUT', error_code = 'TIMED_OUT', updated_at = :now

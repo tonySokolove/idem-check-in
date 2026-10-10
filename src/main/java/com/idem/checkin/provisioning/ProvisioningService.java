@@ -6,6 +6,8 @@ import com.idem.checkin.provisioning.ProvisioningDtos.JobView;
 import com.idem.checkin.provisioning.ProvisioningDtos.StatusReport;
 import com.idem.checkin.security.Secrets;
 import com.idem.checkin.session.StationSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,8 @@ import java.util.UUID;
 
 @Service
 public class ProvisioningService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProvisioningService.class);
 
     private final ProvisioningRepository repository;
     private final Secrets secrets;
@@ -56,18 +60,27 @@ public class ProvisioningService {
         // Порядок блокировок всегда «регистрация → стойка», чтобы не было взаимных блокировок
         repository.lock("registration:" + registrationId);
         repository.lock("session:" + session.id());
-        repository.expireStale(registrationId, session.id(), now);
+        int expired = repository.expireStale(registrationId, session.id(), now);
+        if (expired > 0) {
+            log.info("Registration {}: {} stale provisioning job(s) moved to TIMED_OUT", registrationId, expired);
+        }
 
         if (repository.hasActiveBadge(registrationId)) {
+            log.debug("Registration {} already has an active badge", registrationId);
             return new StartResult.AlreadyIssued();
         }
         var inProgress = repository.findActiveByRegistration(registrationId);
         if (inProgress.isPresent()) {
             var job = inProgress.get();
-            return new StartResult.InProgress(job, job.stationSessionId().equals(session.id()));
+            boolean sameStation = job.stationSessionId().equals(session.id());
+            log.debug("Registration {}: job {} already in progress ({}, {} station)", registrationId, job.id(),
+                    job.status(), sameStation ? "same" : "other");
+            return new StartResult.InProgress(job, sameStation);
         }
         var busy = repository.findActiveBySession(session.id());
         if (busy.isPresent()) {
+            log.info("Station busy: job {} ({}) is not finished, registration {} must wait",
+                    busy.get().id(), busy.get().status(), registrationId);
             return new StartResult.StationBusy(busy.get().id());
         }
 
@@ -81,14 +94,19 @@ public class ProvisioningService {
                     now, now.plus(properties.provisioningJobTtl()));
         } catch (DuplicateKeyException race) {
             // Защищено блокировками выше; уникальные индексы — последняя линия обороны
+            log.warn("Registration {}: concurrent provisioning detected by unique index", registrationId);
             throw new ApiException(HttpStatus.CONFLICT, "PROVISIONING_IN_PROGRESS", "Provisioning already in progress");
         }
+        log.info("Provisioning job {} issued: registration {}, badge {}, expires {}",
+                jobId, registrationId, badgeId, now.plus(properties.provisioningJobTtl()));
         return new StartResult.Started(repository.find(jobId).orElseThrow());
     }
 
     @Transactional(noRollbackFor = ApiException.class)
     public JobView get(StationSession session, UUID jobId) {
-        repository.expireJob(jobId, clock.instant());
+        if (repository.expireJob(jobId, clock.instant()) > 0) {
+            log.info("Job {} moved to TIMED_OUT", jobId);
+        }
         return JobView.of(own(session, jobId));
     }
 
@@ -100,6 +118,7 @@ public class ProvisioningService {
     public JobView report(StationSession session, UUID jobId, StatusReport report) {
         Instant now = clock.instant();
         JobStatus requested = report.status();
+        log.debug("Job {}: status report {} from Station Agent", jobId, requested);
         if (!JobStatus.REPORTABLE.contains(requested)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
                     "status must be one of " + JobStatus.REPORTABLE);
@@ -107,23 +126,25 @@ public class ProvisioningService {
         own(session, jobId);
         repository.lock("registration:" + repository.find(jobId).orElseThrow().registrationId());
         // Истечение срока проверяется до того, как Hub перейдёт к записи: после expiresAt писать уже нельзя
-        if (requested != JobStatus.COMPLETED && requested != JobStatus.FAILED && requested != JobStatus.CANCELLED) {
-            repository.expireJob(jobId, now);
+        if (requested != JobStatus.COMPLETED && requested != JobStatus.FAILED && requested != JobStatus.CANCELLED
+                && repository.expireJob(jobId, now) > 0) {
+            log.info("Job {} moved to TIMED_OUT before report {}", jobId, requested);
         }
         ProvisioningJob job = repository.find(jobId).orElseThrow();
         JobStatus current = job.status();
 
         if (requested == current) {
+            log.debug("Job {}: repeated report {}, nothing changed", jobId, requested);
             return JobView.of(job);
         }
         if (current == JobStatus.COMPLETED) {
-            throw conflict("JOB_ALREADY_COMPLETED", "Job is already completed", job);
+            throw conflict("JOB_ALREADY_COMPLETED", "Job is already completed", job, requested);
         }
         if (current == JobStatus.FAILED || current == JobStatus.CANCELLED) {
-            throw conflict("JOB_ALREADY_FINISHED", "Job is already " + current, job);
+            throw conflict("JOB_ALREADY_FINISHED", "Job is already " + current, job, requested);
         }
         if (current == JobStatus.TIMED_OUT && requested != JobStatus.COMPLETED) {
-            throw conflict("JOB_TIMED_OUT", "Job timed out; start a new check-in", job);
+            throw conflict("JOB_TIMED_OUT", "Job timed out; start a new check-in", job, requested);
         }
 
         switch (requested) {
@@ -134,11 +155,16 @@ public class ProvisioningService {
                         error == null || error.code() == null ? requested.name() : error.code(),
                         error == null ? null : error.message(), now);
                 repository.setBadgeStatus(job.badgeId(), "DISCARDED", now);
+                log.warn("Job {}: {} -> {} ({}: {}), badge {} discarded", jobId, current, requested,
+                        error == null ? null : error.code(), error == null ? null : error.message(), job.badgeId());
             }
             default -> {
                 // Статусы прогресса могут прийти не по порядку — назад не откатываемся
                 if (requested.progress() > current.progress()) {
                     repository.updateStatus(jobId, requested, null, null, now);
+                    log.info("Job {}: {} -> {}", jobId, current, requested);
+                } else {
+                    log.debug("Job {}: late report {} ignored, already {}", jobId, requested, current);
                 }
             }
         }
@@ -147,6 +173,8 @@ public class ProvisioningService {
 
     private void complete(ProvisioningJob job, String readBack, Instant now) {
         if (readBack == null || !readBack.equals(job.payload())) {
+            log.warn("Job {}: COMPLETED rejected, read-back payload {} the issued one", job.id(),
+                    readBack == null ? "is missing, expected" : "does not match");
             throw new ApiException(HttpStatus.UNPROCESSABLE_CONTENT, "VERIFICATION_MISMATCH",
                     "readBackPayload must equal the issued payload; report FAILED if the tag could not be verified");
         }
@@ -155,11 +183,15 @@ public class ProvisioningService {
             repository.updateStatus(job.id(), JobStatus.FAILED, "BADGE_ALREADY_ISSUED",
                     "Another badge is already active for this registration", now);
             repository.setBadgeStatus(job.badgeId(), "DISCARDED", now);
+            log.warn("Job {}: tag written, but registration {} already has an active badge - job FAILED, badge {} discarded",
+                    job.id(), job.registrationId(), job.badgeId());
             return;
         }
         // В том числе «поздний» COMPLETED после TIMED_OUT: метка уже записана, бейдж стоит активировать
         repository.setBadgeStatus(job.badgeId(), "ACTIVE", now);
         repository.updateStatus(job.id(), JobStatus.COMPLETED, null, null, now);
+        log.info("Job {}: {} -> COMPLETED, badge {} is ACTIVE for registration {}",
+                job.id(), job.status(), job.badgeId(), job.registrationId());
     }
 
     private ProvisioningJob own(StationSession session, UUID jobId) {
@@ -168,7 +200,8 @@ public class ProvisioningService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "JOB_NOT_FOUND", "Provisioning job not found"));
     }
 
-    private static ApiException conflict(String code, String message, ProvisioningJob job) {
+    private static ApiException conflict(String code, String message, ProvisioningJob job, JobStatus requested) {
+        log.warn("Job {}: report {} rejected, job is {} ({})", job.id(), requested, job.status(), code);
         return new ApiException(HttpStatus.CONFLICT, code, message, Map.of("job", JobView.of(job)));
     }
 }

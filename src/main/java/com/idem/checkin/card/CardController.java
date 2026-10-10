@@ -3,6 +3,8 @@ package com.idem.checkin.card;
 import com.idem.checkin.provisioning.ProvisioningRepository;
 import com.idem.checkin.registration.RegistrationClient;
 import com.idem.checkin.registration.RegistrationInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -22,6 +24,7 @@ import java.util.regex.Pattern;
 @RestController
 class CardController {
 
+    private static final Logger log = LoggerFactory.getLogger(CardController.class);
     private static final Pattern TOKEN = Pattern.compile("[A-Za-z0-9_-]{16,64}");
 
     private final ProvisioningRepository badges;
@@ -41,13 +44,16 @@ class CardController {
                     try {
                         return registrations.get(id);
                     } catch (RegistrationClient.RegistrationUnavailableException unavailable) {
+                        log.warn("Card page for registration {} shown as inactive: {}", id, unavailable.getMessage());
                         return Optional.empty();
                     }
                 });
         if (registration.isEmpty()) {
+            log.debug("Card page: token is not bound to an active badge");
             return page(HttpStatus.NOT_FOUND, "Бейдж не активен", "Эта ссылка не привязана к действующему бейджу IDEM.");
         }
         RegistrationInfo info = registration.get();
+        log.debug("Card page shown for registration {} ({})", info.registrationId(), info.visible() ? "VISIBLE" : "ANONYMOUS");
         String title = info.visible() ? HtmlUtils.htmlEscape(info.displayName()) : "Гость мероприятия";
         return page(HttpStatus.OK, title, "Визитка участника IDEM. Здесь появятся посещённые стенды и материалы.");
     }

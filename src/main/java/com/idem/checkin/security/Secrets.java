@@ -38,6 +38,14 @@ public class Secrets {
         }
     }
 
+    /**
+     * Короткий отпечаток значения для логов (12 hex SHA-256): записи можно сопоставить,
+     * а само значение (референс из QR, токен) в лог не попадает.
+     */
+    public static String fingerprint(String value) {
+        return value == null ? "-" : java.util.HexFormat.of().formatHex(sha256(value), 0, 6);
+    }
+
     public static boolean constantTimeEquals(String a, String b) {
         return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
     }
